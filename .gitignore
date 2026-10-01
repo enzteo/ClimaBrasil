@@ -1,3 +1,7 @@
 .env
 
 site/Downloads/
+
+*.bak
+*.tsbuildinfo
+!.env.example
