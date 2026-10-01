@@ -1,6 +1,3 @@
-// setup-site.js
-// Rode ISSO DE DENTRO da pasta "site" (a que o create-next-app criou), com:
-//   node setup-site.js
 
 const fs = require("fs");
 const path = require("path");
@@ -17,7 +14,6 @@ function writeFile(p, content) {
 
 console.log("Criando estrutura de pastas e arquivos...");
 
-// --- Home ---
 writeFile(
   "app/page.tsx",
   `// TODO: Home do blog.
@@ -33,7 +29,6 @@ export default function HomePage() {
 `
 );
 
-// --- Sobre ---
 writeFile(
   "app/sobre/page.tsx",
   `// TODO: Página "Sobre" - quem escreve o blog, sobre o que é.
@@ -47,7 +42,6 @@ export default function SobrePage() {
 `
 );
 
-// --- Contato ---
 writeFile(
   "app/contato/page.tsx",
   `// TODO: Página de contato (form simples ou e-mail/whatsapp).
@@ -61,7 +55,6 @@ export default function ContatoPage() {
 `
 );
 
-// --- Lista de posts ---
 writeFile(
   "app/blog/page.tsx",
   `// TODO: Lista todos os posts (usar lib/posts.ts).
@@ -77,7 +70,6 @@ export default function BlogListPage() {
 `
 );
 
-// --- Post individual (rota dinâmica) ---
 writeFile(
   "app/blog/[slug]/page.tsx",
   `// TODO: Renderiza um post a partir do slug (params.slug).
@@ -97,7 +89,6 @@ export default function PostPage({ params }: { params: { slug: string } }) {
 `
 );
 
-// --- API pública do blog: lista ---
 writeFile(
   "app/api/posts/route.ts",
   `// TODO: GET /api/posts?page=1&per_page=20
@@ -112,7 +103,6 @@ export async function GET(request: Request) {
 `
 );
 
-// --- API pública do blog: post por slug ---
 writeFile(
   "app/api/posts/[slug]/route.ts",
   `// TODO: GET /api/posts/{slug}
@@ -129,7 +119,6 @@ export async function GET(
 `
 );
 
-// --- Health check ---
 writeFile(
   "app/health/route.ts",
   `// GET /health -> 200 quando o serviço está pronto.
@@ -141,7 +130,6 @@ export async function GET() {
 `
 );
 
-// --- Dados dos posts ---
 writeFile(
   "lib/posts.ts",
   `// Metadados dos 5 posts (título, slug, keyword-alvo).
@@ -211,7 +199,6 @@ export const posts: Post[] = [
 `
 );
 
-// --- Dockerfile ---
 writeFile(
   "Dockerfile",
   `# TODO: revisar/ajustar conforme sua versão do Next.js.
@@ -241,7 +228,6 @@ CMD ["npm", "start"]
 `
 );
 
-// --- .env.example ---
 writeFile(
   ".env.example",
   `PORT=3000

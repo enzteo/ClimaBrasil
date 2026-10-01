@@ -1,8 +1,3 @@
-// setup-design.js
-// Rode ISSO DE DENTRO da pasta "site", com:
-//   node setup-design.js
-// Ele sobrescreve layout.tsx, page.tsx, blog/page.tsx, blog/[slug]/page.tsx,
-// sobre/page.tsx, contato/page.tsx, e ACRESCENTA estilos ao final do globals.css.
 
 const fs = require("fs");
 const path = require("path");

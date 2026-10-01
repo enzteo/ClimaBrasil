@@ -1,3 +1,5 @@
+// Lista das 27 unidades federativas do Brasil, com a capital de cada uma
+// (é a coordenada da capital que usamos para buscar a temperatura).
 
 export type Estado = {
   sigla: string;

@@ -1,3 +1,8 @@
+// setup-green-theme.js
+// Rode ISSO DE DENTRO da pasta "site", com:
+//   node setup-green-theme.js
+// Corrige o globals.css (remove o modo escuro automático) e troca a cor
+// de destaque de azul (sky) para verde (green) em todas as páginas.
 
 const fs = require("fs");
 const path = require("path");
@@ -8,6 +13,7 @@ function writeFile(p, content) {
   console.log("atualizado:", p);
 }
 
+// --- 1. Corrige o globals.css: remove o bloco de modo escuro automático ---
 const globalsPath = "app/globals.css";
 if (fs.existsSync(globalsPath)) {
   let css = fs.readFileSync(globalsPath, "utf8");
@@ -22,6 +28,7 @@ if (fs.existsSync(globalsPath)) {
   console.log("AVISO: não achei app/globals.css");
 }
 
+// --- 2. Recria as páginas trocando a cor de destaque para verde ---
 
 writeFile(
   "app/layout.tsx",

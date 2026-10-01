@@ -1,7 +1,3 @@
-// setup-pets-theme.js
-// Rode ISSO DE DENTRO da pasta "site" (a que tem lib/posts.ts, app/page.tsx etc), com:
-//   node setup-pets-theme.js
-// Ele SOBRESCREVE os 3 arquivos abaixo com o novo tema (pets).
 
 const fs = require("fs");
 const path = require("path");

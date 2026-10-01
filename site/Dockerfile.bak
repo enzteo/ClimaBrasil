@@ -1,3 +1,5 @@
+# TODO: revisar/ajustar conforme sua versão do Next.js.
+# Build multi-stage: reduz o tamanho final da imagem.
 
 FROM node:20-alpine AS deps
 WORKDIR /app

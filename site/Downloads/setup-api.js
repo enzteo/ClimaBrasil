@@ -1,6 +1,3 @@
-// setup-api.js
-// Rode ISSO DE DENTRO da pasta "platform" (a que tem o package.json da plataforma), com:
-//   node setup-api.js
 
 const fs = require("fs");
 const path = require("path");

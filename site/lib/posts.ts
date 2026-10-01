@@ -1,8 +1,3 @@
-// Metadados dos 5 posts (título, slug, keyword-alvo).
-// Problemas plantados:
-// - post "melhores-epocas-viajar-brasil": NÃO linkar de nenhum outro lugar (órfão)
-// - posts "chuvas-verao-sudeste" e "chuvas-verao-brasil-2026": mesma keyword-alvo (canibalização)
-// - post "chuvas-verao-brasil-2026": sem meta_description (proposital)
 
 export type Post = {
   slug: string;

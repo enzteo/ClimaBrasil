@@ -1,7 +1,3 @@
-// revert-to-climate-theme.js
-// Rode ISSO DE DENTRO da pasta "site", com:
-//   node revert-to-climate-theme.js
-// Ele SOBRESCREVE os 3 arquivos abaixo, voltando para o tema de clima.
 
 const fs = require("fs");
 const path = require("path");

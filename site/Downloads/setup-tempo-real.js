@@ -1,8 +1,3 @@
-// setup-tempo-real.js
-// Rode ISSO DE DENTRO da pasta "site", com:
-//   node setup-tempo-real.js
-// Cria lib/estados.ts, app/tempo-real/page.tsx, e atualiza app/layout.tsx
-// (adiciona o link "Tempo Real" no menu).
 
 const fs = require("fs");
 const path = require("path");
