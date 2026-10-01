@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Um site que o usuário pediu pra auditar (ex: seunome.savaro.com.br)
+model Domain {
+  id        String     @id @default(cuid())
+  hostname  String     @unique // ex: "seunome.savaro.com.br", sem https://
+  createdAt DateTime   @default(now())
+  auditRuns AuditRun[]
+}
+
+// Uma execução de auditoria (cada vez que o usuário roda uma análise)
+model AuditRun {
+  id            String   @id @default(cuid())
+  domain        Domain   @relation(fields: [domainId], references: [id])
+  domainId      String
+  status        AuditStatus @default(PENDING)
+  overallScore  Int?     // nota de 0 a 100, calculada no final
+  pagesCrawled  Int      @default(0)
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  pages         Page[]
+  issues        Issue[]
+}
+
+enum AuditStatus {
+  PENDING
+  CRAWLING
+  ANALYZING
+  DONE
+  FAILED
+}
+
+// Cada página que o crawler visitou dentro de uma auditoria
+model Page {
+  id               String   @id @default(cuid())
+  auditRun         AuditRun @relation(fields: [auditRunId], references: [id])
+  auditRunId       String
+  url              String
+  statusCode       Int?
+  redirectedTo     String?  // se houve redirecionamento, pra onde foi
+  responseTimeMs   Int?
+  title            String?
+  metaDescription  String?
+  h1Count          Int      @default(0)
+  wordCount        Int      @default(0)
+  canonicalUrl     String?
+  hasStructuredData Boolean @default(false)
+  hasViewportMeta  Boolean  @default(false)
+  incomingLinks    Int      @default(0) // quantos links internos apontam pra essa página (0 = órfã)
+  html             String?  @db.Text   // guardamos o HTML bruto pra reprocessar depois se precisar
+  createdAt        DateTime @default(now())
+  links            Link[]   @relation("PageOutgoingLinks")
+
+  @@index([auditRunId])
+}
+
+// Links encontrados dentro de uma página (pra montar o grafo interno e achar órfãs/404s)
+model Link {
+  id         String  @id @default(cuid())
+  fromPage   Page    @relation("PageOutgoingLinks", fields: [fromPageId], references: [id])
+  fromPageId String
+  toUrl      String
+  isInternal Boolean @default(true)
+
+  @@index([fromPageId])
+}
+
+// Problemas encontrados pela auditoria, já priorizados
+model Issue {
+  id          String       @id @default(cuid())
+  auditRun    AuditRun     @relation(fields: [auditRunId], references: [id])
+  auditRunId  String
+  module      IssueModule
+  severity    IssueSeverity
+  title       String
+  description String       @db.Text
+  affectedUrl String?
+  createdAt   DateTime     @default(now())
+
+  @@index([auditRunId])
+}
+
+enum IssueModule {
+  DOMAIN
+  ON_PAGE
+  OFF_PAGE
+  TECHNICAL
+  CONTENT
+  INTEGRATIONS
+}
+
+enum IssueSeverity {
+  HIGH
+  MEDIUM
+  LOW
+}

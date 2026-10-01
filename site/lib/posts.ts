@@ -63,7 +63,7 @@ export const posts: Post[] = [
     slug: "chuvas-verao-brasil-2026",
     title: "Chuvas de verão no Brasil: o que esperar em 2026",
     keyword: "chuvas de verão brasil",
-    meta_description: null, // proposital: problema plantado (sem meta description)
+    meta_description: null,
     published_at: "2026-09-26T10:00:00-03:00",
     updated_at: "2026-09-26T10:00:00-03:00",
     content_html:

@@ -50,9 +50,18 @@ export default async function PostPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <h1>{post.title}</h1>
+      <h1 className="text-3xl font-bold leading-tight text-slate-900">
+        {post.title}
+      </h1>
+      <p className="mt-2 text-sm text-slate-500">
+        Publicado em{" "}
+        {new Date(post.published_at).toLocaleDateString("pt-BR")}
+      </p>
 
-      <div dangerouslySetInnerHTML={{ __html: post.content_html }} />
+      <div
+        className="post-content mt-8 space-y-4 text-slate-700"
+        dangerouslySetInnerHTML={{ __html: post.content_html }}
+      />
     </article>
   );
 }

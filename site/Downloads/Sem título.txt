@@ -1,0 +1,348 @@
+
+Preparando o envio do código do crawler solicitado.
+Preparando o envio do código do crawler solicitado.
+Aqui está o lib/crawler.ts completo (o mesmo do arquivo que te mandei):
+
+ts
+import * as cheerio from "cheerio";
+import { prisma } from "./prisma";
+import { fetchRobotsRules, isPathAllowed } from "./robots";
+
+const USER_AGENT = "MeuSEOBot/1.0";
+const DELAY_MS = 500; // 2 requisições por segundo = 1 a cada 500ms
+const MAX_PAGES = 200;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Normaliza uma URL: remove barra final duplicada, mantém só o essencial.
+function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    u.hash = ""; // ignora âncoras (#secao)
+    let path = u.pathname;
+    if (path.length > 1 && path.endsWith("/")) {
+      path = path.slice(0, -1);
+    }
+    return `${u.origin}${path}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
+// Tenta ler o sitemap.xml e extrair as URLs listadas nele (regex simples, sem lib de XML).
+async function fetchSitemapUrls(baseUrl: string): Promise<string[]> {
+  try {
+    const response = await fetch(`${baseUrl}/sitemap.xml`, {
+      headers: { "User-Agent": USER_AGENT },
+    });
+    if (!response.ok) return [];
+    const xml = await response.text();
+    const matches = [...xml.matchAll(/<loc>(.*?)<\/loc>/g)];
+    return matches.map((m) => m[1].trim());
+  } catch {
+    return [];
+  }
+}
+
+export async function crawlDomain(auditRunId: string, hostname: string) {
+  const baseUrl = `https://${hostname}`;
+
+  await prisma.auditRun.update({
+    where: { id: auditRunId },
+    data: { status: "CRAWLING" },
+  });
+
+  const { disallowedPaths } = await fetchRobotsRules(baseUrl, USER_AGENT);
+  const sitemapUrls = await fetchSitemapUrls(baseUrl);
+
+  const visited = new Set<string>();
+  const queue: string[] = [normalizeUrl(baseUrl), ...sitemapUrls.map(normalizeUrl)];
+  // Guarda, pra cada URL visitada, quantos links internos apontam pra ela.
+  const incomingLinksCount = new Map<string, number>();
+
+  let pagesCrawled = 0;
+
+  while (queue.length > 0 && pagesCrawled < MAX_PAGES) {
+    const currentUrl = queue.shift()!;
+    if (visited.has(currentUrl)) continue;
+
+    const urlObj = new URL(currentUrl);
+    if (urlObj.hostname !== hostname) continue; // só rastreia o próprio domínio
+    if (!isPathAllowed(urlObj.pathname, disallowedPaths)) continue;
+
+    visited.add(currentUrl);
+
+    const startTime = Date.now();
+    let statusCode: number | null = null;
+    let redirectedTo: string | null = null;
+    let html = "";
+
+    try {
+      const response = await fetch(currentUrl, {
+        headers: { "User-Agent": USER_AGENT },
+        redirect: "follow",
+      });
+      statusCode = response.status;
+      if (response.redirected && response.url !== currentUrl) {
+        redirectedTo = response.url;
+      }
+      html = await response.text();
+    } catch {
+      statusCode = 0; // erro de rede (site fora do ar, DNS, etc.)
+    }
+
+    const responseTimeMs = Date.now() - startTime;
+
+    let title: string | null = null;
+    let metaDescription: string | null = null;
+    let h1Count = 0;
+    let wordCount = 0;
+    let canonicalUrl: string | null = null;
+    let hasStructuredData = false;
+    let hasViewportMeta = false;
+
+    if (html) {
+      const $ = cheerio.load(html);
+
+      title = $("title").first().text().trim() || null;
+      metaDescription =
+        $('meta[name="description"]').attr("content")?.trim() || null;
+      h1Count = $("h1").length;
+      canonicalUrl = $('link[rel="canonical"]').attr("href") || null;
+      hasStructuredData = $('script[type="application/ld+json"]').length > 0;
+      hasViewportMeta = $('meta[name="viewport"]').length > 0;
+
+      const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+      wordCount = bodyText ? bodyText.split(" ").length : 0;
+
+      // Extrai todos os links da página e enfileira os internos ainda não visitados
+      $("a[href]").each((_, el) => {
+        const href = $(el).attr("href");
+        if (!href) return;
+
+        let absoluteUrl: string;
+        try {
+          absoluteUrl = new URL(href, currentUrl).toString();
+        } catch {
+          return;
+        }
+
+        const normalized = normalizeUrl(absoluteUrl);
+        let isInternal = false;
+
+        try {
+          isInternal = new URL(normalized).hostname === hostname;
+        } catch {
+          isInternal = false;
+        }
+
+        if (isInternal) {
+          incomingLinksCount.set(
+            normalized,
+            (incomingLinksCount.get(normalized) || 0) + 1
+          );
+          if (!visited.has(normalized) && !queue.includes(normalized)) {
+            queue.push(normalized);
+          }
+        }
+      });
+    }
+
+    await prisma.page.create({
+      data: {
+        auditRunId,
+        url: currentUrl,
+        statusCode,
+        redirectedTo,
+        responseTimeMs,
+        title,
+        metaDescription,
+        h1Count,
+        wordCount,
+        canonicalUrl,
+        hasStructuredData,
+        hasViewportMeta,
+        html,
+      },
+    });
+
+    pagesCrawled++;
+
+    await prisma.auditRun.update({
+      where: { id: auditRunId },
+      data: { pagesCrawled },
+    });
+
+    await sleep(DELAY_MS);
+  }
+
+  // Depois de rastrear tudo, atualiza quantos links internos cada página recebeu
+  // (é assim que detectamos página órfã: incomingLinks === 0)
+  const pages = await prisma.page.findMany({ where: { auditRunId } });
+  for (const page of pages) {
+    const count = incomingLinksCount.get(normalizeUrl(page.url)) || 0;
+    await prisma.page.update({
+      where: { id: page.id },
+      data: { incomingLinks: count },
+    });
+  }
+
+  await prisma.auditRun.update({
+    where: { id: auditRunId },
+    data: { status: "ANALYZING" },
+  });
+
+  return pagesCrawled;
+}
+Ele depende dos outros dois arquivos (prisma.ts e robots.ts) na mesma pasta platform\lib\. Se quiser baixar em vez de copiar:
+
+Presented 3 files
+Presented 3 files
+Cole o código em platform\lib\crawler.ts (ou baixe os três arquivos acima) e me avisa quando estiver no lugar, que eu sigo com a rota e a tela que disparam a auditoria.
+
+
+Crawler
+TS 
+
+Robots
+TS 
+
+Prisma
+TS 
+tira uma duvida
+
+Pode perguntar.
+
+pronto fiz o codigo do crawler
+
+Aguardando esclarecimento sobre o código do crawler.
+Aguardando esclarecimento sobre o código do crawler.
+Beleza. Antes de seguir: você tinha dito "tira uma dúvida" agora há pouco e não chegou a perguntar — ainda tem alguma coisa em aberto, ou já resolveu sozinho?
+
+De qualquer forma, vamos confirmar que está tudo certo antes de avançar. Roda dentro de platform:
+
+dir lib
+Deve aparecer crawler.ts, robots.ts e prisma.ts os três juntos (o crawler depende dos outros dois pra funcionar). Me confirma.
+
+esqueci como que abre o terminal do vscode KKK
+
+Sem problema. Dentro do VS Code:
+
+Atalho: Ctrl + ' (crase, geralmente ao lado do número 1 no teclado)
+Ou pelo menu: Terminal (barra de cima) → Novo Terminal
+Ele abre já na pasta que o VS Code está mostrando no Explorer. Confirma se é a pasta platform (olha o PS C:\...\platform> no início da linha) antes de rodar dir lib.
+
+PS C:\Users\enzot\teste-seo-savaro\platform> dir lib
+
+    Diretório: C:\Users\enzot\teste-seo-savaro\platform\lib
+
+Mode                 LastWriteTime         Length Name                                                                                                                           
+----                 -------------         ------ ----                                                                                                                           
+-a----        28/09/2026     16:45           5162 Crawler.ts                                                                                                                     
+-a----        27/09/2026     00:13            281 prisma.ts                                                                                                                      
+-a----        27/09/2026     00:21           1377 robots.ts
+
+Checking filename casing and import paths across crawler files.
+Checking filename casing and import paths across crawler files.
+Reparei um detalhe importante: o arquivo está como Crawler.ts (com C maiúsculo), mas o correto é crawler.ts (tudo minúsculo) — isso é crítico porque:
+
+No Windows, maiúscula/minúscula não faz diferença pro sistema de arquivos, então localmente vai parecer que funciona.
+Mas o container Docker roda Linux (a imagem node:20-alpine), e no Linux nome de arquivo é case-sensitive — Crawler.ts e crawler.ts são dois arquivos diferentes. Quando o código tentar import { crawlDomain } from "./crawler" (tudo minúsculo, como vamos escrever), vai funcionar no seu PC mas quebrar no Docker/no servidor da empresa.
+Renomeia agora, antes de esquecer: clica com botão direito no arquivo no VS Code → Renomear → crawler.ts (minúsculo).
+
+Confirma depois com dir lib de novo — os 3 arquivos certos são crawler.ts, prisma.ts, robots.ts, todos minúsculos.
+
+PS C:\Users\enzot\teste-seo-savaro\platform> dir lib
+
+    Diretório: C:\Users\enzot\teste-seo-savaro\platform\lib
+
+Mode                 LastWriteTime         Length Name                                                                                                                           
+----                 -------------         ------ ----                                                                                                                           
+-a----        28/09/2026     16:45           5162 Crawler.ts                                                                                                                     
+-a----        27/09/2026     00:13            281 prisma.ts                                                                                                                      
+-a----        27/09/2026     00:21           1377 robots.ts                                                                                                                      
+
+PS C:\Users\enzot\teste-seo-savaro\platform> dir lib
+
+    Diretório: C:\Users\enzot\teste-seo-savaro\platform\lib
+
+Mode                 LastWriteTime         Length Name                                                                                                                           
+----                 -------------         ------ ----                                                                                                                           
+-a----        28/09/2026     16:45           5162 crawler.ts                                                                                                                     
+-a----        27/09/2026     00:13            281 prisma.ts                                                                                                                      
+-a----        27/09/2026     00:21           1377 robots.ts                                                                                                                      
+
+PS C:\Users\enzot\teste-seo-savaro\platform>
+
+Certo agora, os 3 minúsculos: crawler.ts, prisma.ts, robots.ts.
+
+Próximo passo: criar a rota de API que dispara o crawler quando alguém digita um domínio, e a tela onde isso acontece. Vou dividir em duas partes:
+
+app/api/audits/route.ts — recebe o domínio via POST, cria o Domain e o AuditRun no banco, dispara o crawler (sem travar a resposta) e devolve o ID da auditoria.
+app/api/audits/[id]/route.ts — consulta o status/progresso de uma auditoria (pra tela ficar perguntando "como está indo?").
+Executou 2 comandos, arquivos compartilhados
+Coloca os dois arquivos nesses caminhos exatos (repara nos colchetes [id], que é sintaxe de rota dinâmica do Next.js, igual fizemos no [slug] do site):
+
+platform/app/api/audits/route.ts
+platform/app/api/audits/[id]/route.ts
+O que cada rota faz:
+
+POST /api/audits — você manda { "hostname": "algumsite.com" }, ela cria o registro do domínio (ou reaproveita se já existir, com upsert), cria uma nova execução de auditoria (AuditRun), e dispara o crawler sem esperar ele terminar (repara que não tem await antes de crawlDomain(...) — só um .catch() pra capturar erro). Isso é o que cumpre a exigência "roda em segundo plano, a tela não fica travada".
+GET /api/audits/{id} — consulta em que pé está uma auditoria específica (quantas páginas já rastreou, se terminou, etc.). A tela vai chamar essa rota de tempos em tempos pra atualizar a barra de progresso.
+Cria as duas pastas/arquivos e me avisa — próximo passo é a tela em si (app/page.tsx da plataforma, com o campo pra digitar o domínio).
+
+
+Route
+TS 
+
+Route
+TS 
+Roda no terminal, dentro de site:
+
+node setup-pets-theme.js
+Me manda o que aparecer (deve mostrar 3 linhas "atualizado: ...").
+
+agr onde que ta esses arquivos
+
+Verificando se o arquivo já foi colocado no lugar certo.
+Verificando se o arquivo já foi colocado no lugar certo.
+Depois de rodar node setup-pets-theme.js, os arquivos atualizados ficam nos mesmos lugares de sempre, dentro da pasta site:
+
+site/lib/posts.ts
+site/app/page.tsx
+site/app/blog/page.tsx
+Não são arquivos novos — o script sobrescreve os que já existiam nesses três caminhos com o conteúdo novo (tema dos pets).
+
+Você já rodou o node setup-pets-theme.js? Se sim, me manda o que apareceu no terminal (deveria mostrar 3 linhas começando com "atualizado:"). Se ainda não rodou, é o próximo passo.
+
+
+O Claude trabalha diretamente com sua base de código
+
+
+c
+
+Claude é uma IA e pode cometer erros. Confira sempre as respostas.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
